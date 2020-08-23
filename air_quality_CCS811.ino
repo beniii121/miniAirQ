@@ -10,7 +10,7 @@
 
 #include "mbedtls/md.h"
 #include "time.h"
-#include <WiFi.h>
+#include "WiFi.h"
 #include <HTTPClient.h>
 #include "driver/adc.h"
 #include "esp_sleep.h"
@@ -21,11 +21,10 @@
 #define uS_TO_S_FACTOR 1000000    //Conversion factor for micro seconds to seconds
 #define TIME_TO_SLEEP  600        //Time ESP32 will go to sleep (in seconds). Preferred is 10 minutes for air quality monitoring.
 
-#define USER_ID 0                 //Place your Registration id here: to send data to the API endpoint
+#define USER_ID 1                //Place your Registration id here: to send data to the API endpoint
 #define API_ENDPOINT "http://eldanor.hu/miniairq/api.php"  //URL of the API endpoint
 
-RTC_DATA_ATTR int bootCount = 0;
-
+#define ONBOARD_LED  2
 
 // Wiring for ESP32 NodeMCU boards: VDD to 3V3, GND to GND, SDA to 21, SCL to 22, nWAKE to 23 (or GND)
 CCS811 ccs811(23); // nWAKE on 23
@@ -56,15 +55,18 @@ void setup() {
   Serial.begin(115200);   
   delay(500);
 
-  bootCount++;
-  Serial.print("Number of measurements: ");
-  Serial.println(bootCount);
+  pinMode(ONBOARD_LED,OUTPUT);
+
+  digitalWrite(ONBOARD_LED,HIGH);
+  delay(300);
+  digitalWrite(ONBOARD_LED,LOW);
+  delay(300); 
 
   // Enable I2C
   Wire.begin(); 
-  
+      
   // Enable CCS811
-  ccs811.set_i2cdelay(50); // Needed for ESP8266 because it doesn't handle I2C clock stretch correctly
+  ccs811.set_i2cdelay(50); // Needed for ESP32 because it doesn't handle I2C clock stretch correctly
   bool ok= ccs811.begin();
   if( !ok ) Serial.println("setup: CCS811 begin FAILED");
 
@@ -77,24 +79,46 @@ void setup() {
   ok = ccs811.start(CCS811_MODE_1SEC);
   if( !ok ) Serial.println("setup: CCS811 start FAILED");
 
+      
   /*
    * Connecting to WiFi to get and send data
    */
   Serial.println("Connecting to WiFi router");
   WiFi.begin(ssid, pass);
+  uint16_t wifistatus = WiFi.status();
   i = 0;
-  while (WiFi.status() != WL_CONNECTED) {
+  while (wifistatus != WL_CONNECTED) {
+    if (wifistatus == WL_CONNECT_FAILED){
+      //WiFi.begin(ssid, pass);
+    }
     delay(500);
     Serial.print(".");
+    wifistatus = WiFi.status();
     i++;
     
-    //If not connected after 10 tries automatic restart
-    if ( i == 11 ) {
+    //If not connected after 6 tries automatic restart
+    if ( i == 5 ) {      
+      digitalWrite(ONBOARD_LED,HIGH);
+      delay(100);
+      digitalWrite(ONBOARD_LED,LOW);
+      delay(100);
+      digitalWrite(ONBOARD_LED,HIGH);
+      delay(100);
+      digitalWrite(ONBOARD_LED,LOW);
+      delay(100);
+      digitalWrite(ONBOARD_LED,HIGH);
+      delay(100);
+      digitalWrite(ONBOARD_LED,LOW);
       ESP.restart();
     }
   }
+  
   Serial.println("WiFi connected.");  
   Serial.println(WiFi.localIP());
+
+  digitalWrite(ONBOARD_LED,HIGH);
+  delay(100);
+  digitalWrite(ONBOARD_LED,LOW);
   
   
   uint16_t eco2, etvoc, errstat, raw;
@@ -211,6 +235,14 @@ void setup() {
   if(httpCode > 0) {
       if(httpCode == HTTP_CODE_OK) {
         Serial.println("Sending air quality data was successful");
+        digitalWrite(ONBOARD_LED,HIGH);
+        delay(100);
+        digitalWrite(ONBOARD_LED,LOW);
+        delay(100);
+        digitalWrite(ONBOARD_LED,HIGH);
+        delay(100);
+        digitalWrite(ONBOARD_LED,LOW);
+  
       }
   } else {
       Serial.printf("Set airquality failed, error: %s\n", http.errorToString(httpCode).c_str());
@@ -222,9 +254,8 @@ void setup() {
    */
   Serial.println("Going to sleep now...");  
   adc_power_off();
-  WiFi.mode(WIFI_OFF);
-  btStop();  
   esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
+  delay(25);
   esp_deep_sleep_start();
   
 }
